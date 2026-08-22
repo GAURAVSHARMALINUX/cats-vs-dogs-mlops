@@ -38,7 +38,7 @@ spec:
               value: "INFO"
             # CI replaces this value with the commit SHA
             - name: APP_VERSION
-              value: "1.0.0"
+              value: "1.0.1"
             - name: POD_NAME
               valueFrom:
                 fieldRef:
