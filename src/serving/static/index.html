@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cats vs Dogs — Inference</title>
+<!-- Inline icon: avoids a 404 on /favicon.ico and needs no extra route or asset. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%F0%9F%90%BE%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --ink: #1f2933;
+    --muted: #5c6b7a;
+    --line: #dde3e9;
+    --accent: #2c5f8d;
+    --accent-soft: #e8f0f7;
+    --cat: #a8641b;
+    --dog: #2c5f8d;
+    --ok: #2e7d5b;
+    --err: #b3261e;
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12171c; --panel: #1b2229; --ink: #e6ebf0; --muted: #94a3b1;
+      --line: #2b343d; --accent: #6ea8dc; --accent-soft: #1d2a36;
+      --cat: #d79a52; --dog: #6ea8dc; --ok: #5cbf95; --err: #ef8b83;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 20px 56px;
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--ink);
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  header { margin-bottom: 24px; }
+  h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 13.5px; }
+  .status {
+    display: inline-flex; align-items: center; gap: 7px; margin-top: 12px;
+    padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--panel); font-size: 12.5px; color: var(--muted);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); }
+  .dot.err { background: var(--err); }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 22px;
+  }
+  #drop {
+    border: 2px dashed var(--line); border-radius: var(--radius);
+    padding: 40px 20px; text-align: center; cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  #drop:hover, #drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  #drop strong { display: block; font-size: 16px; margin-bottom: 4px; }
+  #drop span { color: var(--muted); font-size: 13px; }
+  input[type=file] { display: none; }
+  .result { margin-top: 22px; display: none; }
+  .result.show { display: block; }
+  .row { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+  .preview {
+    width: 190px; height: 190px; object-fit: cover; border-radius: var(--radius);
+    border: 1px solid var(--line); flex-shrink: 0; background: var(--bg);
+  }
+  .verdict { flex: 1; min-width: 240px; }
+  .label { font-size: 30px; font-weight: 700; text-transform: capitalize; letter-spacing: -0.02em; }
+  .label.cat { color: var(--cat); }
+  .label.dog { color: var(--dog); }
+  .confidence { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
+  .bars { margin-top: 18px; display: grid; gap: 10px; }
+  .bar-row { display: grid; grid-template-columns: 42px 1fr 52px; gap: 10px; align-items: center; font-size: 13px; }
+  .track { height: 9px; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+  /* display:block matters - width has no effect on an inline element */
+  .fill { display: block; height: 100%; width: 0; transition: width .35s ease; }
+  .fill.cat { background: var(--cat); }
+  .fill.dog { background: var(--dog); }
+  .pct { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .meta {
+    margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line);
+    display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .error {
+    margin-top: 18px; padding: 12px 14px; border-radius: 10px;
+    border: 1px solid var(--err); color: var(--err); font-size: 13.5px; display: none;
+  }
+  .error.show { display: block; }
+  footer { margin-top: 22px; font-size: 12.5px; color: var(--muted); }
+  footer a { color: var(--accent); text-decoration: none; margin-right: 14px; }
+  footer a:hover { text-decoration: underline; }
+  .spinner {
+    width: 15px; height: 15px; border: 2px solid var(--line);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin .7s linear infinite; display: inline-block; vertical-align: -2px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Cats vs Dogs</h1>
+    <div class="sub">Binary image classification — MLOps Assignment 2</div>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">checking service…</span></div>
+  </header>
+
+  <div class="panel">
+    <div id="drop">
+      <strong>Drop an image here</strong>
+      <span>or click to choose a file — JPEG or PNG</span>
+    </div>
+    <input type="file" id="file" accept="image/*">
+
+    <div class="error" id="error"></div>
+
+    <div class="result" id="result">
+      <div class="row">
+        <img class="preview" id="preview" alt="uploaded image">
+        <div class="verdict">
+          <div class="label" id="label">—</div>
+          <div class="confidence" id="confidence"></div>
+          <div class="bars">
+            <div class="bar-row">
+              <span>cat</span>
+              <span class="track"><span class="fill cat" id="barCat"></span></span>
+              <span class="pct" id="pctCat">—</span>
+            </div>
+            <div class="bar-row">
+              <span>dog</span>
+              <span class="track"><span class="fill dog" id="barDog"></span></span>
+              <span class="pct" id="pctDog">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="meta">
+        <span>inference <b id="mLatency">—</b></span>
+        <span>threshold <b id="mThreshold">—</b></span>
+        <span>model <b id="mModel">—</b></span>
+        <span>file <b id="mFile">—</b></span>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <a href="/docs">API docs</a>
+    <a href="/metrics">Metrics</a>
+    <a href="/info">Service info</a>
+    <a href="/ready">Readiness</a>
+  </footer>
+</div>
+
+<script>
+(function () {
+  const drop = document.getElementById('drop');
+  const fileInput = document.getElementById('file');
+  const result = document.getElementById('result');
+  const errorBox = document.getElementById('error');
+
+  function setStatus(state, text) {
+    const dot = document.getElementById('dot');
+    dot.className = 'dot' + (state ? ' ' + state : '');
+    document.getElementById('statusText').textContent = text;
+  }
+
+  fetch('/ready')
+    .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+    .then(function (r) {
+      if (r.ok) {
+        setStatus('ok', 'model ready — ' + (r.body.model || 'loaded'));
+      } else {
+        setStatus('err', 'model not loaded: ' + (r.body.detail || 'unavailable'));
+      }
+    })
+    .catch(function () { setStatus('err', 'service unreachable'); });
+
+  drop.addEventListener('click', function () { fileInput.click(); });
+  ['dragenter', 'dragover'].forEach(function (e) {
+    drop.addEventListener(e, function (ev) { ev.preventDefault(); drop.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function (e) {
+    drop.addEventListener(e, function (ev) { ev.preventDefault(); drop.classList.remove('over'); });
+  });
+  drop.addEventListener('drop', function (ev) {
+    if (ev.dataTransfer.files.length) { predict(ev.dataTransfer.files[0]); }
+  });
+  fileInput.addEventListener('change', function () {
+    if (fileInput.files.length) { predict(fileInput.files[0]); }
+  });
+
+  function showError(message) {
+    errorBox.textContent = message;
+    errorBox.classList.add('show');
+    result.classList.remove('show');
+  }
+
+  function predict(file) {
+    errorBox.classList.remove('show');
+    drop.innerHTML = '<strong><span class="spinner"></span> Predicting…</strong><span>' +
+      file.name + '</span>';
+
+    const reader = new FileReader();
+    reader.onload = function (e) { document.getElementById('preview').src = e.target.result; };
+    reader.readAsDataURL(file);
+
+    const body = new FormData();
+    body.append('file', file);
+
+    fetch('/predict', { method: 'POST', body: body })
+      .then(function (r) {
+        return r.json().then(function (b) {
+          if (!r.ok) { throw new Error(b.detail || ('HTTP ' + r.status)); }
+          return b;
+        });
+      })
+      .then(render)
+      .catch(function (err) { showError(err.message); })
+      .finally(function () {
+        drop.innerHTML = '<strong>Drop another image here</strong>' +
+          '<span>or click to choose a file — JPEG or PNG</span>';
+        fileInput.value = '';
+      });
+  }
+
+  function render(data) {
+    const cat = data.probabilities.cat;
+    const dog = data.probabilities.dog;
+    const label = document.getElementById('label');
+
+    label.textContent = data.predicted_label;
+    label.className = 'label ' + data.predicted_label;
+    document.getElementById('confidence').textContent =
+      (data.confidence * 100).toFixed(1) + '% confident';
+
+    document.getElementById('barCat').style.width = (cat * 100) + '%';
+    document.getElementById('barDog').style.width = (dog * 100) + '%';
+    document.getElementById('pctCat').textContent = (cat * 100).toFixed(1) + '%';
+    document.getElementById('pctDog').textContent = (dog * 100).toFixed(1) + '%';
+
+    document.getElementById('mLatency').textContent = data.inference_time_ms + ' ms';
+    document.getElementById('mThreshold').textContent = data.threshold;
+    document.getElementById('mModel').textContent = data.model_version;
+    document.getElementById('mFile').textContent = data.filename;
+
+    result.classList.add('show');
+  }
+})();
+</script>
+</body>
+</html>
