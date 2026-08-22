@@ -63,14 +63,33 @@ if [ -z "${IMAGE_PATH}" ] || [ ! -f "${IMAGE_PATH}" ]; then
   done
 fi
 if [ -z "${IMAGE_PATH}" ] || [ ! -f "${IMAGE_PATH}" ]; then
+  # Fall back to a small JPEG embedded right here. The smoke test has to run
+  # wherever the pipeline puts it - the image-build job, for instance, never
+  # installs Pillow - so it must not shell out to Python for a test image.
   TMP_IMAGE="$(mktemp -t smoke-XXXXXX).jpg"
-  python3 - "$TMP_IMAGE" <<'PY'
-import sys
-from PIL import Image
-Image.new("RGB", (400, 300), (128, 128, 128)).save(sys.argv[1], "JPEG")
-PY
+  base64 -d > "${TMP_IMAGE}" <<'JPEG_BASE64'
+/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIf
+IiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7
+Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCABgAGADASIA
+AhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQA
+AAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3
+ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWm
+p6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEA
+AwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSEx
+BhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElK
+U1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3
+uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwBlFFFc
+p1BRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRVyyshOvmSZ254A70m7Alcrw28s5+RcjuT0FWl0t
+iPnlAPsM1ogAAADAHQClrFzfQvlRnNpbBfllBPoVxVaa1mg5Zcr/AHhyK2qKFNhyo5+ir95YqqNN
+Fxjkr/hVCtU7kNWCiiiqAKKKKAJLeEzzKnY9T6CtsAAAAYA6AVnaWoLyP3AA/P8A/VWlWE3rYuOw
+UUUVAwooooAKx72DyZzgYVuR/hWxVHVFBiR+4bH5/wD6quDsxPYzaKKK3ICiiigC/pbANIueSAR/
+n8a0axbWbyJ1Y/dPDfStqsJrUuOwUUUVAwooooAKpaowECLnktkfl/8AXq7WTqE3mz7R92Pj8e9X
+BXYnsVaKKK3ICiiigAq/Y3iqnlTNjH3WP8qoUVLVwTsdBRWPBezQ4Gd6/wB1qtLqkZHzxsD7c1k4
+NF3Reoqk2qRBflRyfQ4FVptQml4X92vsefzoUGwuizeXiojRxt+86Ej+GsyiitUrEN3CiiiqAKKK
+KACiiigAooooAKKKKACiiigAooooA//Z
+JPEG_BASE64
   IMAGE_PATH="${TMP_IMAGE}"
-  echo "      no dataset image found, using a generated test image"
+  echo "      no dataset image available, using the built-in test image"
 fi
 echo "      image: ${IMAGE_PATH}"
 
