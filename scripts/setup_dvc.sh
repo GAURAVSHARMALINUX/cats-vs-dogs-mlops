@@ -3,7 +3,7 @@
 # (A real project would point this at S3/GDrive/Azure Blob instead.)
 set -euo pipefail
 
-REMOTE_PATH="${1:-$HOME/dvc-remote/cats-vs-dogs}"
+REMOTE_PATH="${1:-../dvc-remote}"
 
 if [ ! -d .dvc ]; then
   echo "[dvc] initialising ..."
