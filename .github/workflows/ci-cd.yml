@@ -29,6 +29,10 @@ env:
   EPOCHS: ${{ github.event.inputs.epochs || '2' }}
   ARCHITECTURE: ${{ github.event.inputs.architecture || 'mobilenetv2' }}
   MAX_IMAGES_PER_CLASS: "400"
+  # Optional escape hatch: set a repository variable named DATA_URL
+  # (Settings > Secrets and variables > Actions > Variables) to point the
+  # download stage at a different mirror without editing any code.
+  DATA_URL: ${{ vars.DATA_URL }}
 
 jobs:
   # ---------------------------------------------------------------- M3.1
