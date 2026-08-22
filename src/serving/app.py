@@ -1,7 +1,8 @@
 """FastAPI inference service for the Cats vs Dogs classifier.
 
 Endpoints
-    GET  /          service metadata
+    GET  /          upload UI (HTML)
+    GET  /info      service metadata
     GET  /health    liveness probe
     GET  /ready     readiness probe (is the model actually loaded?)
     POST /predict   image upload -> label + class probabilities
@@ -14,9 +15,10 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from prometheus_client import Counter, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -30,6 +32,7 @@ logging.basicConfig(
 logger = logging.getLogger("cats_vs_dogs.api")
 
 APP_VERSION = os.getenv("APP_VERSION", "1.0.0")
+UI_PAGE = Path(__file__).parent / "static" / "index.html"
 GIT_SHA = os.getenv("GIT_SHA", "local")
 
 cfg = get_config()
@@ -103,14 +106,28 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-@app.get("/", tags=["meta"])
-def root():
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def index():
+    """Minimal upload UI, served by the API itself.
+
+    Keeping the page inside this service means there is no second container,
+    image or manifest to deploy: wherever the API runs, the UI is there too.
+    """
+    try:
+        return HTMLResponse(UI_PAGE.read_text(encoding="utf-8"))
+    except OSError as exc:  # pragma: no cover - only if the asset is missing
+        logger.error("could not read the UI page: %s", exc)
+        raise HTTPException(status_code=404, detail="UI page not available") from exc
+
+
+@app.get("/info", tags=["meta"])
+def info():
     return {
         "service": "cats-vs-dogs-inference",
         "version": APP_VERSION,
         "git_sha": GIT_SHA,
         "model_loaded": model_service.is_ready,
-        "endpoints": ["/health", "/ready", "/predict", "/metrics", "/docs"],
+        "endpoints": ["/", "/info", "/health", "/ready", "/predict", "/metrics", "/docs"],
     }
 
 
