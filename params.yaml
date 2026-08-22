@@ -1,0 +1,43 @@
+# Single source of truth for the pipeline.
+# Every value here is read by the code and logged to MLflow.
+# Environment variables (see src/config.py) can override any of these in CI.
+
+data:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  image_size: 224
+  seed: 42
+  # cats_and_dogs_filtered has 1500 usable images per class
+  max_images_per_class: 1500
+  splits:
+    train: 0.8
+    val: 0.1
+    test: 0.1
+
+train:
+  architecture: mobilenetv2      # baseline_cnn | mobilenetv2
+  epochs: 3
+  batch_size: 32
+  learning_rate: 0.0001
+  early_stopping_patience: 2
+  augmentation:
+    horizontal_flip: true
+    rotation: 0.1                # fraction of 2*pi
+    zoom: 0.2
+    translation: 0.1
+
+mlflow:
+  experiment_name: cats_vs_dogs
+  # sqlite backend: works offline, and `mlflow ui` reads the same file
+  tracking_uri: sqlite:///mlflow.db
+  run_name: null
+
+serving:
+  model_path: artifacts/model.keras
+  class_names: [cat, dog]
+  threshold: 0.5
+
+monitoring:
+  sample_size: 40
+  min_accuracy: 0.80
+  report_path: artifacts/post_deployment_report.json

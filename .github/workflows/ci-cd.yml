@@ -1,0 +1,283 @@
+name: MLOps CI/CD
+
+# M3: every push and pull request runs the full CI (tests -> train -> image).
+# M4: pushes to main additionally deploy to a Kubernetes cluster and are
+#     gated by a post-deploy smoke test.
+on:
+  push:
+    branches: ["main", "develop", "feature/**"]
+    paths-ignore: ["**/*.md", "docs/**"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      epochs:
+        description: "Training epochs"
+        default: "2"
+      architecture:
+        description: "baseline_cnn or mobilenetv2"
+        default: "mobilenetv2"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  REGISTRY: ghcr.io
+  # CI-sized training run: keeps the pipeline under ~10 minutes.
+  EPOCHS: ${{ github.event.inputs.epochs || '2' }}
+  ARCHITECTURE: ${{ github.event.inputs.architecture || 'mobilenetv2' }}
+  MAX_IMAGES_PER_CLASS: "400"
+
+jobs:
+  # ---------------------------------------------------------------- M3.1
+  lint-and-test:
+    name: Lint & unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Lint (flake8)
+        run: |
+          flake8 src tests --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 src tests --count --exit-zero --statistics
+
+      - name: Run unit tests
+        run: |
+          pytest tests/ -v --junitxml=test-report.xml --cov=src --cov-report=term-missing --cov-report=xml
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: |
+            test-report.xml
+            coverage.xml
+
+  # ---------------------------------------------------------------- M1
+  train:
+    name: Train & track model
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download dataset
+        run: python -m src.data.download
+
+      - name: Preprocess (224x224 RGB, 80/10/10 split)
+        run: python -m src.data.preprocess
+
+      - name: Train and log to MLflow
+        run: python -m src.models.train
+
+      - name: Show tracked metrics
+        run: |
+          echo '### Training metrics' >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          cat artifacts/metrics.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload model artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-model
+          path: |
+            artifacts/model.keras
+            artifacts/metrics.json
+          retention-days: 14
+
+      - name: Upload MLflow run + plots
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlflow-artifacts
+          path: |
+            mlruns/
+            artifacts/confusion_matrix.png
+            artifacts/training_curves.png
+            artifacts/classification_report.txt
+          retention-days: 14
+
+      # Held-out test split is reused by the post-deployment check (M5.2)
+      - name: Upload held-out test split
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-split
+          path: data/processed/test
+          retention-days: 7
+
+  # ---------------------------------------------------------------- M2/M3.3
+  build-and-push:
+    name: Build & publish image
+    needs: train
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download trained model
+        uses: actions/download-artifact@v4
+        with:
+          name: trained-model
+          path: artifacts
+
+      - name: Compute image reference (lowercase)
+        id: meta
+        run: |
+          REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=${{ env.REGISTRY }}/${REPO_LC}:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "image_latest=${{ env.REGISTRY }}/${REPO_LC}:latest" >> $GITHUB_OUTPUT
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image (and push on non-PR events)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: |
+            ${{ steps.meta.outputs.image }}
+            ${{ steps.meta.outputs.image_latest }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify the image serves predictions
+        run: |
+          IMAGE="${{ steps.meta.outputs.image }}"
+          if [ "${{ github.event_name }}" != "pull_request" ]; then docker pull "$IMAGE"; fi
+          docker run -d --name verify -p 8000:8000 "$IMAGE"
+          bash scripts/smoke_test.sh http://localhost:8000
+          docker logs verify | tail -n 20
+          docker rm -f verify
+
+      - name: Record image in the job summary
+        run: |
+          echo "### Published image" >> $GITHUB_STEP_SUMMARY
+          echo '`${{ steps.meta.outputs.image }}`' >> $GITHUB_STEP_SUMMARY
+
+  # ---------------------------------------------------------------- M4
+  deploy:
+    name: Deploy to Kubernetes & smoke test
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install client dependencies
+        run: pip install requests scikit-learn pyyaml pillow
+
+      - name: Download held-out test split
+        uses: actions/download-artifact@v4
+        with:
+          name: test-split
+          path: data/processed/test
+
+      # An ephemeral Kubernetes cluster inside the runner: the same manifests
+      # a minikube/kind cluster on a laptop would use, with no cloud account
+      # and no cost involved.
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: mlops-cd
+          wait: 120s
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull the published image into the cluster
+        run: |
+          IMAGE="${{ needs.build-and-push.outputs.image }}"
+          docker pull "$IMAGE"
+          kind load docker-image "$IMAGE" --name mlops-cd
+
+      - name: Deploy manifests
+        run: |
+          chmod +x scripts/deploy_kind.sh
+          ./scripts/deploy_kind.sh "${{ needs.build-and-push.outputs.image }}" mlops
+
+      - name: Port-forward the service
+        run: |
+          kubectl -n mlops port-forward svc/cats-vs-dogs-api 8000:80 &
+          sleep 8
+
+      # M4.3 - the pipeline fails here if the deployment is not serving
+      - name: Post-deploy smoke test
+        run: |
+          chmod +x scripts/smoke_test.sh
+          ./scripts/smoke_test.sh http://localhost:8000
+
+      # M5.2 - score the live endpoint against known labels
+      - name: Post-deployment model performance check
+        run: |
+          python -m src.monitoring.performance_check --url http://localhost:8000 --sample-size 40 --min-accuracy 0.70 --fail-under --no-mlflow
+
+      - name: Publish monitoring report
+        if: always()
+        run: |
+          echo '### Post-deployment performance' >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          cat artifacts/post_deployment_report.json >> $GITHUB_STEP_SUMMARY || echo '{}' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload monitoring report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-deployment-report
+          path: artifacts/post_deployment_report.json
+
+      - name: Cluster diagnostics on failure
+        if: failure()
+        run: |
+          kubectl -n mlops get all
+          kubectl -n mlops describe deployment cats-vs-dogs-api || true
+          kubectl -n mlops logs -l app=cats-vs-dogs-api --tail=100 || true

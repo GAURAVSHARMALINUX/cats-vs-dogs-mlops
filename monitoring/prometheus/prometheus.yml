@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: cats-vs-dogs-api
+    metrics_path: /metrics
+    static_configs:
+      # docker compose service name; inside Kubernetes this is overridden by
+      # k8s/monitoring/prometheus-configmap.yaml
+      - targets: ["api:8000"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

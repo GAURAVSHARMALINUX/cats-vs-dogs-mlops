@@ -1,0 +1,4 @@
+# Patterns DVC should never track
+*.pyc
+__pycache__/
+.pytest_cache/

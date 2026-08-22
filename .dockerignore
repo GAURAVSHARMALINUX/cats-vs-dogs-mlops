@@ -1,0 +1,15 @@
+data/
+mlruns/
+.git/
+.github/
+.dvc/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+docs/
+k8s/
+monitoring/
+scripts/
+artifacts/*
+!artifacts/model.keras

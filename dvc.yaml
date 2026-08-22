@@ -1,0 +1,47 @@
+# Reproducible pipeline: `dvc repro` runs download -> preprocess -> train.
+# Stage inputs/outputs are content-hashed by DVC, so a stage is only re-run
+# when its code, data or parameters actually change.
+stages:
+  download:
+    cmd: python -m src.data.download
+    deps:
+      - src/data/download.py
+    outs:
+      - data/raw
+
+  preprocess:
+    cmd: python -m src.data.preprocess
+    deps:
+      - src/data/preprocess.py
+      - src/config.py
+      - data/raw
+    params:
+      - data.image_size
+      - data.seed
+      - data.splits
+      - data.max_images_per_class
+    outs:
+      - data/processed
+
+  train:
+    cmd: python -m src.models.train
+    deps:
+      - src/models/train.py
+      - src/models/model.py
+      - src/utils_plots.py
+      - src/config.py
+      - data/processed
+    params:
+      - train
+      - serving.model_path
+      - serving.threshold
+    outs:
+      - artifacts/model.keras
+    metrics:
+      - artifacts/metrics.json:
+          cache: false
+    plots:
+      - artifacts/confusion_matrix.png:
+          cache: false
+      - artifacts/training_curves.png:
+          cache: false

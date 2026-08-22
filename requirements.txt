@@ -1,0 +1,27 @@
+# Full training + pipeline environment (M1).
+# Every version is pinned so a run is reproducible on any machine and in CI.
+
+# --- core ML ---
+tensorflow-cpu==2.20.0
+keras==3.15.1
+numpy==2.4.6
+pillow==12.3.0
+scikit-learn==1.9.0
+
+# --- experiment tracking & data versioning ---
+mlflow==3.15.1
+dvc==3.67.1
+
+# --- plotting (confusion matrix, loss curves) ---
+matplotlib==3.11.1
+
+# --- serving (kept here too so `dvc repro` + api share one env locally) ---
+fastapi==0.141.1
+uvicorn==0.52.4
+python-multipart==0.0.32
+prometheus-fastapi-instrumentator==8.1.0
+
+# --- utilities ---
+pyyaml==6.0.3
+requests==2.34.2
+tqdm==4.70.0

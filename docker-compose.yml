@@ -1,0 +1,58 @@
+# Local demo stack (M2.3 + M5.1): API + MLflow + Prometheus + Grafana.
+#   docker compose up --build
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cats-vs-dogs-api:local
+    container_name: cvd-api
+    ports:
+      - "8000:8000"
+    environment:
+      APP_VERSION: "1.0.0-local"
+      LOG_LEVEL: "INFO"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health',timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.19.0
+    container_name: cvd-mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns:/mlruns
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri file:///mlruns
+      --default-artifact-root file:///mlruns
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: cvd-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:11.5.1
+    container_name: cvd-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus

@@ -1,0 +1,14 @@
+# Normalise line endings - important when the repo is cloned on Windows:
+# shell scripts with CRLF break inside Docker images and CI runners.
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.ps1  text eol=crlf
+
+# Binary artifacts (the model itself is versioned by DVC, not git)
+*.png  binary
+*.jpg  binary
+*.keras binary
+*.h5   binary

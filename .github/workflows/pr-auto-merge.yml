@@ -1,0 +1,36 @@
+name: PR auto-approve & auto-merge
+
+# "Auto testing + auto approval": once the MLOps CI/CD workflow is green on a
+# pull request, the bot approves it and turns on auto-merge, so the change
+# lands on main - which in turn triggers the deployment pipeline - with no
+# manual gate anywhere in the chain.
+#
+# Repo settings this relies on:
+#   Settings > General > Pull Requests > "Allow auto-merge" = on
+#   Settings > Branches > branch protection on main with "MLOps CI/CD" as a
+#   required status check.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-approve-and-merge:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Approve the pull request
+        uses: hmarr/auto-approve-action@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # GitHub only completes the merge once every required status check
+      # (i.e. the whole MLOps CI/CD workflow) has passed.
+      - name: Enable auto-merge
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

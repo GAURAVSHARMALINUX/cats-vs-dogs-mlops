@@ -1,0 +1,22 @@
+# --- DVC-tracked data & model artifacts (never committed to git) ---
+/data
+/artifacts/model.keras
+/artifacts/model.h5
+/mlruns
+*.zip
+
+# --- python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+test-report.xml
+
+# --- tooling / editors ---
+.DS_Store
+.idea/
+.vscode/
+*.log
