@@ -30,9 +30,10 @@ manifests run on `minikube` locally.
 │   ├── models/train.py          # M1  training + MLflow tracking
 │   ├── utils_plots.py           # M1  confusion matrix + loss/accuracy curves
 │   ├── serving/inference.py     # M2  preprocessing + model service
-│   ├── serving/app.py           # M2  FastAPI: /health /ready /predict /metrics
+│   ├── serving/app.py           # M2  FastAPI: / /health /ready /predict /metrics
+│   ├── serving/static/index.html  # M2  browser upload UI served at /
 │   └── monitoring/performance_check.py   # M5  post-deployment evaluation
-├── tests/                       # M3  23 unit + API tests
+├── tests/                       # M3  24 unit + API tests
 ├── k8s/base/                    # M4  Namespace, Deployment, Service, HPA
 ├── k8s/monitoring/              # M5  Prometheus + Grafana on the cluster
 ├── monitoring/                  # M5  Prometheus scrape config, Grafana dashboard
@@ -53,7 +54,7 @@ pip install -r requirements-dev.txt
 make data           # download + preprocess (224x224 RGB, 80/10/10)
 make train          # train, log to MLflow, write artifacts/model.keras
 make test           # run the test suite
-make serve          # uvicorn on http://localhost:8000/docs
+make serve          # uvicorn - open http://localhost:8000 for the upload UI
 ```
 
 In another shell:
@@ -69,7 +70,7 @@ Full local stack (API + MLflow + Prometheus + Grafana):
 ```bash
 make train          # the image needs artifacts/model.keras to exist
 docker compose up --build
-#  API        http://localhost:8000/docs
+#  API + UI   http://localhost:8000        (Swagger at /docs)
 #  MLflow     http://localhost:5000
 #  Prometheus http://localhost:9090
 #  Grafana    http://localhost:3000   (anonymous viewer enabled)
@@ -114,6 +115,7 @@ mlflow ui --backend-store-uri sqlite:///mlflow.db
 | Requirement | Where |
 |---|---|
 | REST API | FastAPI in `src/serving/app.py` |
+| Browser UI | `GET /` - drag-and-drop upload page served by the API itself |
 | Health check endpoint | `GET /health` (liveness) and `GET /ready` (model actually loaded) |
 | Prediction endpoint | `POST /predict` — returns label, confidence and both class probabilities |
 | Pinned dependencies | `requirements.txt`, `requirements-serve.txt`, `requirements-dev.txt` — every version pinned |
@@ -140,6 +142,14 @@ Example response:
   "filename": "dog_0042.jpg"
 }
 ```
+
+The service also serves its own **browser UI** at `/`: drag an image in and it
+shows the predicted label, the confidence, both class probabilities and the
+inference latency. It is a single static HTML file
+(`src/serving/static/index.html`) returned by the API - no CDN, no build step
+and no second container, so wherever the API is deployed the UI is already
+there. Machine clients that used to read the JSON banner at `/` should now use
+`/info`.
 
 ### M3 — CI: build, test, image creation
 
